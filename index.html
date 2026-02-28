@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SEMINAR.AI — セミナーを自分ごとに変換する</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=M+PLUS+1+Code:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    :root {
+      --bg: #FFFFFF;
+      --text: #0A0A0A;
+      --border: #0A0A0A;
+      --accent: #FF0000;
+      --sub: #555555;
+      --green: #007700;
+      --border-w: 1.5px;
+      --font: 'JetBrains Mono', 'M PLUS 1 Code', monospace;
+      --max-w: 840px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 13px;
+    }
+
+    /* ── Header ── */
+    #app-header {
+      border-bottom: var(--border-w) solid var(--border);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 100;
+    }
+    .logo { font-size: 15px; font-weight: 700; letter-spacing: 0.08em; }
+    .logo span { color: var(--accent); }
+
+    #stepper { font-size: 12px; color: var(--sub); letter-spacing: 0.04em; }
+    #stepper .s-active { color: var(--text); font-weight: 700; }
+
+    #header-ctx {
+      font-size: 12px; color: var(--sub);
+      cursor: pointer; text-decoration: underline;
+      display: none;
+    }
+    #header-ctx:hover { color: var(--accent); }
+
+    /* ── Main wrap ── */
+    #main { max-width: var(--max-w); margin: 0 auto; padding: 0 24px; }
+
+    /* ── Phases ── */
+    .phase { display: none; }
+    .phase.active { display: block; }
+
+    /* ── Labels / Headings ── */
+    .sec-label {
+      font-size: 12px; letter-spacing: 0.2em;
+      text-transform: uppercase; color: var(--sub);
+      margin-bottom: 10px;
+    }
+    .page-title {
+      font-size: 22px; font-weight: 700; margin-bottom: 6px;
+    }
+    .page-sub {
+      font-size: 12px; color: var(--sub); margin-bottom: 36px;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      font-family: var(--font); font-size: 13px; font-weight: 700;
+      background: var(--text); color: var(--bg);
+      border: var(--border-w) solid var(--border);
+      border-radius: 0; padding: 12px 24px;
+      cursor: pointer; letter-spacing: 0.04em;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .btn:hover { background: var(--accent); border-color: var(--accent); }
+
+    .btn-ghost {
+      font-family: var(--font); font-size: 12px;
+      background: var(--bg); color: var(--text);
+      border: var(--border-w) solid var(--border);
+      border-radius: 0; padding: 8px 14px;
+      cursor: pointer;
+      transition: background 0.1s, color 0.1s;
+    }
+    .btn-ghost:hover { background: var(--text); color: var(--bg); }
+
+    /* ── Form ── */
+    .form-group { margin-bottom: 22px; }
+    .form-group label {
+      display: block; font-size: 12px; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    input[type="text"], input[type="url"], textarea {
+      font-family: var(--font); font-size: 13px;
+      border: var(--border-w) solid var(--border);
+      border-radius: 0; padding: 11px 12px;
+      width: 100%; background: var(--bg); color: var(--text);
+      outline: none;
+    }
+    input:focus, textarea:focus { border-color: var(--accent); }
+    input::placeholder, textarea::placeholder { color: #BBBBBB; }
+
+    .error-msg {
+      font-size: 12px; color: var(--accent);
+      margin-top: 6px; display: none;
+    }
+
+    /* ── Tags ── */
+    .tag-row { display: flex; gap: 8px; }
+    .tag-row input { flex: 1; }
+    .tags-wrap { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .tag {
+      font-size: 12px; border: var(--border-w) solid var(--border);
+      padding: 4px 8px; display: flex; align-items: center; gap: 6px;
+    }
+    .tag-x { cursor: pointer; color: var(--sub); line-height: 1; }
+    .tag-x:hover { color: var(--accent); }
+
+    /* ── Divider ── */
+    .divider { border: none; border-top: var(--border-w) solid #E0E0E0; margin: 28px 0; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--text); color: var(--bg);
+      padding: 10px 18px; font-size: 12px;
+      border: var(--border-w) solid var(--border);
+      display: none; z-index: 999;
+    }
+
+    /* ──────────────────────────
+       S01 — Context
+    ────────────────────────── */
+    #phase-context { padding: 48px 0 64px; }
+
+    /* ──────────────────────────
+       S02 — URL Input
+    ────────────────────────── */
+    #phase-url { padding: 48px 0 64px; }
+
+    .url-row { display: flex; gap: 8px; margin-bottom: 6px; }
+    .url-row input { flex: 1; }
+
+    .history-item {
+      border: var(--border-w) solid var(--border);
+      padding: 12px 16px; margin-bottom: 8px;
+      cursor: pointer; display: flex;
+      justify-content: space-between; align-items: center;
+      transition: background 0.1s;
+    }
+    .history-item:hover { background: #F4F4F4; }
+    .hist-title { font-size: 13px; font-weight: 500; }
+    .hist-meta { font-size: 12px; color: var(--sub); margin-top: 2px; }
+
+    /* ──────────────────────────
+       S03 — Watch
+    ────────────────────────── */
+    #phase-watch { padding: 32px 0 48px; }
+
+    .watch-grid {
+      display: grid;
+      grid-template-columns: 1fr 260px;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .video-wrap {
+      border: var(--border-w) solid var(--border);
+      aspect-ratio: 16/9; overflow: hidden;
+    }
+    .video-wrap iframe { width: 100%; height: 100%; display: block; border: none; }
+
+    .analysis-panel {
+      border: var(--border-w) solid var(--border);
+      padding: 16px;
+    }
+    .analysis-panel .panel-label {
+      font-size: 12px; letter-spacing: 0.2em;
+      text-transform: uppercase; color: var(--sub); margin-bottom: 14px;
+    }
+    .a-step {
+      font-size: 12px; padding: 7px 0;
+      border-bottom: 1px solid #EBEBEB;
+      display: none;
+      animation: fadeup 0.3s ease forwards;
+    }
+    .a-step.done { color: var(--green); }
+    .a-step.prog { color: var(--text); font-style: italic; }
+    .analysis-note {
+      font-size: 12px; color: var(--sub); margin-top: 14px; line-height: 1.6;
+    }
+
+    .watch-foot { display: flex; justify-content: flex-end; padding-top: 4px; }
+
+    @keyframes fadeup {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ──────────────────────────
+       S04 — Loading
+    ────────────────────────── */
+    #phase-loading { padding: 80px 0; text-align: center; }
+    .loading-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .loading-ctx { font-size: 12px; color: var(--sub); margin-bottom: 40px; min-height: 18px; }
+
+    .prog-wrap {
+      max-width: 400px; margin: 0 auto 14px;
+      border: var(--border-w) solid var(--border);
+      height: 18px; overflow: hidden;
+    }
+    .prog-fill {
+      height: 100%; background: var(--text);
+      width: 0%;
+    }
+    .prog-fill.running {
+      animation: proganim 1.4s ease-out forwards;
+    }
+    @keyframes proganim { from { width: 0% } to { width: 100% } }
+    .prog-label { font-size: 12px; color: var(--sub); }
+
+    /* ──────────────────────────
+       S05 — Output
+    ────────────────────────── */
+    #phase-output { padding: 32px 0 80px; }
+
+    .output-top {
+      display: flex; align-items: flex-start;
+      justify-content: space-between; gap: 16px;
+      margin-bottom: 32px;
+    }
+    .output-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+    .output-date { font-size: 12px; color: var(--sub); }
+    .output-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+    .out-section { margin-bottom: 40px; }
+    .out-section-title {
+      font-size: 12px; font-weight: 700; letter-spacing: 0.2em;
+      text-transform: uppercase;
+      border-bottom: var(--border-w) solid var(--border);
+      padding-bottom: 8px; margin-bottom: 14px;
+    }
+
+    .usable-item {
+      border: var(--border-w) solid var(--border);
+      padding: 16px; margin-bottom: 8px;
+    }
+    .usable-point {
+      font-size: 14px; font-weight: 700; margin-bottom: 8px;
+    }
+    .usable-point .arrow { color: var(--accent); margin-right: 4px; }
+    .usable-ctx { font-size: 12px; color: var(--sub); line-height: 1.7; }
+
+    .action-row {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 12px 0; border-bottom: 1px solid #EBEBEB;
+    }
+    .action-row input[type="checkbox"] {
+      width: 15px; height: 15px; flex-shrink: 0;
+      margin-top: 2px; accent-color: var(--text); cursor: pointer;
+    }
+    .action-row .action-text { flex: 1; line-height: 1.5; }
+    .action-row.done .action-text { text-decoration: line-through; color: var(--sub); }
+    .action-timing {
+      font-size: 12px; color: var(--sub);
+      padding: 2px 8px; border: 1px solid #CCCCCC;
+      flex-shrink: 0; white-space: nowrap;
+    }
+
+    .memo-row {
+      font-size: 12px; color: var(--sub);
+      padding: 8px 0; border-bottom: 1px solid #EBEBEB; line-height: 1.6;
+    }
+    .memo-row::before { content: '— '; color: var(--text); }
+
+    /* ──────────────────────────
+       S06 — History
+    ────────────────────────── */
+    #phase-history { padding: 48px 0 64px; }
+    .history-full-item {
+      border: var(--border-w) solid var(--border);
+      padding: 16px; margin-bottom: 8px;
+      cursor: pointer; transition: background 0.1s;
+    }
+    .history-full-item:hover { background: #F4F4F4; }
+    .hf-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+    .hf-meta { font-size: 12px; color: var(--sub); }
+
+    .empty-state {
+      font-size: 12px; color: var(--sub);
+      padding: 40px; text-align: center;
+      border: var(--border-w) solid #DDDDDD;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<div id="app-header">
+  <div class="logo">SEMINAR<span>.</span>AI</div>
+  <div id="stepper">
+    <span id="s1" class="s-active">01/設定</span>
+    <span> › </span>
+    <span id="s2">02/入力</span>
+    <span> › </span>
+    <span id="s3">03/解析</span>
+    <span> › </span>
+    <span id="s4">04/生成</span>
+    <span> › </span>
+    <span id="s5">05/出力</span>
+  </div>
+  <div id="header-ctx" onclick="editContext()">
+    <span id="ctx-label">CTX: —</span> <i class="bi bi-pencil"></i>
+  </div>
+</div>
+
+<div id="main">
+
+  <!-- ── S01: Context ── -->
+  <div id="phase-context" class="phase active">
+    <div class="sec-label">// INITIAL SETUP</div>
+    <div class="page-title">あなたのコンテキストを設定</div>
+    <div class="page-sub">一度設定すれば、以降はURLを貼るだけ。</div>
+
+    <div class="form-group">
+      <label>職種 *</label>
+      <input type="text" id="ctx-role" placeholder="例: プロダクトマネージャー">
+      <div class="error-msg" id="ctx-role-err">職種を入力してください</div>
+    </div>
+
+    <div class="form-group">
+      <label>よく使うツール</label>
+      <div class="tag-row">
+        <input type="text" id="ctx-tool-input" placeholder="例: Claude Code — Enterで追加">
+        <button type="button" class="btn-ghost" onclick="addTool()">追加</button>
+      </div>
+      <div class="tags-wrap" id="ctx-tools"></div>
+    </div>
+
+    <div class="form-group">
+      <label>今の課題</label>
+      <textarea id="ctx-challenge" rows="3" placeholder="例: AIツールをチームに展開したい"></textarea>
+    </div>
+
+    <button type="button" class="btn" onclick="saveContext()">設定して始める →</button>
+  </div>
+
+  <!-- ── S02: URL Input ── -->
+  <div id="phase-url" class="phase">
+    <div class="sec-label">// ANALYZE VIDEO</div>
+    <div class="page-title">動画URLを入力</div>
+    <div class="page-sub">YouTubeのURLを貼るだけ。AIが音声とスライドを解析します。</div>
+
+    <div class="url-row">
+      <input type="url" id="url-input" placeholder="https://www.youtube.com/watch?v=...">
+      <button type="button" class="btn" onclick="startAnalysis()">解析開始 →</button>
+    </div>
+    <div class="error-msg" id="url-err">YouTube のURLを入力してください</div>
+
+    <div class="divider"></div>
+    <div class="sec-label">// RECENT</div>
+    <div id="history-preview"></div>
+  </div>
+
+  <!-- ── S03: Watch ── -->
+  <div id="phase-watch" class="phase">
+    <div class="sec-label">// ANALYZING</div>
+    <div class="watch-grid">
+      <div class="video-wrap">
+        <iframe id="video-iframe" src="" allowfullscreen></iframe>
+      </div>
+      <div class="analysis-panel">
+        <div class="panel-label">// AI 解析状況</div>
+        <div class="a-step prog" id="ast-1">音声を解析中...</div>
+        <div class="a-step done" id="ast-2">✓ 音声解析完了</div>
+        <div class="a-step prog" id="ast-3">スライド画像を検出中...</div>
+        <div class="a-step done" id="ast-4">✓ スライド 7枚を検出</div>
+        <div class="a-step prog" id="ast-5">あなたの文脈に翻訳中...</div>
+        <div class="analysis-note">動画を見ながら待てます</div>
+      </div>
+    </div>
+    <div class="watch-foot">
+      <button type="button" class="btn" id="watch-btn" style="display:none" onclick="goToLoading()">
+        解析完了 → アウトプット生成
+      </button>
+    </div>
+  </div>
+
+  <!-- ── S04: Loading ── -->
+  <div id="phase-loading" class="phase">
+    <div class="sec-label">// GENERATING</div>
+    <div class="loading-title">AIがあなたの文脈で翻訳しています...</div>
+    <div class="loading-ctx" id="loading-ctx-label"></div>
+    <div class="prog-wrap">
+      <div class="prog-fill" id="prog-fill"></div>
+    </div>
+    <div class="prog-label">音声 + スライド + コンテキストを統合中</div>
+  </div>
+
+  <!-- ── S05: Output ── -->
+  <div id="phase-output" class="phase">
+    <div class="output-top">
+      <div>
+        <div class="sec-label">// OUTPUT</div>
+        <div class="output-title" id="out-title">—</div>
+        <div class="output-date" id="out-date">—</div>
+      </div>
+      <div class="output-actions">
+        <button type="button" class="btn-ghost" onclick="goToUrl()">← 新しい動画</button>
+        <button type="button" class="btn-ghost" onclick="goToHistory()">履歴</button>
+      </div>
+    </div>
+
+    <div class="out-section">
+      <div class="out-section-title">あなたに使えること</div>
+      <div id="usable-list"></div>
+    </div>
+
+    <div class="out-section">
+      <div class="out-section-title">アクションプラン</div>
+      <div id="action-list"></div>
+    </div>
+
+    <div class="out-section">
+      <div class="out-section-title">視聴メモ</div>
+      <div id="memo-list"></div>
+    </div>
+
+    <button type="button" class="btn-ghost" onclick="resetSample()" style="font-size:12px;padding:6px 12px;">
+      サンプルデータに戻す
+    </button>
+  </div>
+
+  <!-- ── S06: History ── -->
+  <div id="phase-history" class="phase">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:32px">
+      <div>
+        <div class="sec-label">// HISTORY</div>
+        <div style="font-size:18px;font-weight:700">視聴履歴</div>
+      </div>
+      <button type="button" class="btn-ghost" onclick="goToUrl()">← 戻る</button>
+    </div>
+    <div id="history-full"></div>
+  </div>
+
+</div><!-- #main -->
+
+<div id="toast"></div>
+
+<script>
+  // ─────────────────────────────
+  // Sample Data
+  // ─────────────────────────────
+  const SAMPLE = {
+    usableItems: [
+      {
+        id: 'u1',
+        point: 'ユーザーインタビューの質問設計にAIを活用する',
+        context: 'Claude CodeでインタビューガイドをNotionに自動生成するフローを構築できる。設計工数を毎回削減。'
+      },
+      {
+        id: 'u2',
+        point: '週次レポートの要約を自動化する',
+        context: 'Slackのスレッドを貼り付けるだけで議事録を生成。毎週30分以上削減できる。'
+      },
+      {
+        id: 'u3',
+        point: 'チーム向けAI活用ガイドを作成する',
+        context: 'この動画の内容をベースにNotionドキュメントを作成し、チームに共有する。具体的な使い方と制約の両方を記載する。'
+      }
+    ],
+    actionPlan: [
+      { id: 'a1', action: 'Claude CodeでNotionテンプレート生成のプロンプトを作る', timing: '今週中' },
+      { id: 'a2', action: '週次レポート自動化のパイロットを自分のチームで試す', timing: '来週月曜' },
+      { id: 'a3', action: 'AI活用ガイドの初稿をNotionに作成してチームにレビュー依頼', timing: '今月末' }
+    ],
+    memos: [
+      'Agent Teamsは「できるから使うもの」ではない。使わなくて済むなら、その方が速くて安い',
+      'Sub agentで倒れるのも Task tool call — 作業の分担処理に有効',
+      '各業者での議論が必要なければ使う必要はない。シンプルに保つ',
+      'ツールは目的ではなく手段。ROIを常に意識して使う',
+      '実装前にコンテキストを理解し、大胆な方向性にコミットすることが重要'
+    ]
+  };
+
+  // ─────────────────────────────
+  // Storage
+  // ─────────────────────────────
+  const SK = {
+    ctx:      'seminar_ai_v1_context',
+    sessions: 'seminar_ai_v1_sessions',
+    outputs:  'seminar_ai_v1_outputs',
+    checks:   'seminar_ai_v1_checks'
+  };
+
+  function ls(key) {
+    try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
+  }
+  function ss(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  // ─────────────────────────────
+  // State
+  // ─────────────────────────────
+  const state = {
+    phase: 'context',
+    ctx: null,
+    tools: [],
+    session: null,
+    output: null
+  };
+
+  // ─────────────────────────────
+  // Phase switch
+  // ─────────────────────────────
+  function switchPhase(name) {
+    document.querySelectorAll('.phase').forEach(el => el.classList.remove('active'));
+    const target = document.getElementById('phase-' + name);
+    if (!target) { switchPhase('url'); return; }
+    target.classList.add('active');
+    state.phase = name;
+    updateHeader(name);
+    window.scrollTo(0, 0);
+  }
+
+  function updateHeader(phase) {
+    const map = { context: 1, url: 2, watch: 3, loading: 4, output: 5, history: 5 };
+    const cur = map[phase] || 1;
+    for (let i = 1; i <= 5; i++) {
+      const el = document.getElementById('s' + i);
+      if (el) el.classList.toggle('s-active', i === cur);
+    }
+    const ctxBtn = document.getElementById('header-ctx');
+    ctxBtn.style.display = (phase !== 'context') ? 'block' : 'none';
+    if (state.ctx) {
+      document.getElementById('ctx-label').textContent = 'CTX: ' + state.ctx.role;
+    }
+  }
+
+  // ─────────────────────────────
+  // Toast
+  // ─────────────────────────────
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 2000);
+  }
+
+  // ─────────────────────────────
+  // S01: Context
+  // ─────────────────────────────
+  function addTool() {
+    const input = document.getElementById('ctx-tool-input');
+    const val = input.value.trim();
+    if (!val || state.tools.includes(val)) { input.value = ''; return; }
+    state.tools.push(val);
+    input.value = '';
+    renderToolTags();
+  }
+
+  function removeTool(t) {
+    state.tools = state.tools.filter(x => x !== t);
+    renderToolTags();
+  }
+
+  function renderToolTags() {
+    const wrap = document.getElementById('ctx-tools');
+    wrap.innerHTML = state.tools.map(t =>
+      `<div class="tag"><span>${escapeHtml(t)}</span><span class="tag-x" onclick="removeTool(${JSON.stringify(t)})">×</span></div>`
+    ).join('');
+  }
+
+  function saveContext() {
+    const role = document.getElementById('ctx-role').value.trim();
+    const errEl = document.getElementById('ctx-role-err');
+    if (!role) { errEl.style.display = 'block'; return; }
+    errEl.style.display = 'none';
+
+    state.ctx = {
+      role,
+      tools: [...state.tools],
+      currentChallenge: document.getElementById('ctx-challenge').value.trim()
+    };
+    ss(SK.ctx, state.ctx);
+    toast('コンテキストを保存しました');
+    goToUrl();
+  }
+
+  function editContext() {
+    if (state.ctx) {
+      document.getElementById('ctx-role').value = state.ctx.role;
+      state.tools = [...(state.ctx.tools || [])];
+      renderToolTags();
+      document.getElementById('ctx-challenge').value = state.ctx.currentChallenge || '';
+    }
+    switchPhase('context');
+  }
+
+  document.getElementById('ctx-tool-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addTool(); }
+  });
+
+  // ─────────────────────────────
+  // S02: URL
+  // ─────────────────────────────
+  function goToUrl() {
+    renderHistoryPreview();
+    switchPhase('url');
+  }
+
+  function extractVideoId(url) {
+    const m = url.match(/(?:v=|youtu\.be\/)([^&\s?#]+)/);
+    return m ? m[1] : null;
+  }
+
+  function startAnalysis() {
+    const input = document.getElementById('url-input');
+    const errEl = document.getElementById('url-err');
+    const url = input.value.trim();
+    const videoId = extractVideoId(url);
+
+    if (!videoId) { errEl.style.display = 'block'; return; }
+    errEl.style.display = 'none';
+
+    const session = {
+      id: 's' + Date.now(),
+      url, videoId,
+      title: 'YouTube動画 — ' + new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+      createdAt: new Date().toISOString().slice(0, 10)
+    };
+    state.session = session;
+
+    const sessions = ls(SK.sessions) || [];
+    sessions.unshift(session);
+    ss(SK.sessions, sessions.slice(0, 10));
+
+    goToWatch();
+  }
+
+  function renderHistoryPreview() {
+    const sessions = ls(SK.sessions) || [];
+    const el = document.getElementById('history-preview');
+    if (sessions.length === 0) {
+      el.innerHTML = '<div style="font-size:12px;color:#999;padding:12px 0">まだ視聴履歴がありません</div>';
+      return;
+    }
+    el.innerHTML = sessions.slice(0, 2).map(s =>
+      `<div class="history-item" onclick="loadSessionById(${JSON.stringify(s.id)})">
+        <div>
+          <div class="hist-title">${escapeHtml(s.title)}</div>
+          <div class="hist-meta">${escapeHtml(s.createdAt)}</div>
+        </div>
+        <i class="bi bi-arrow-right"></i>
+      </div>`
+    ).join('');
+  }
+
+  function loadSessionById(id) {
+    const sessions = ls(SK.sessions) || [];
+    const session = sessions.find(s => s.id === id);
+    if (!session) return;
+    state.session = session;
+    const outputs = ls(SK.outputs) || [];
+    const output = outputs.find(o => o.sessionId === id);
+    if (output) {
+      state.output = output;
+      renderOutput();
+      switchPhase('output');
+    }
+  }
+
+  document.getElementById('url-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); startAnalysis(); }
+  });
+
+  // ─────────────────────────────
+  // S03: Watch
+  // ─────────────────────────────
+  function goToWatch() {
+    if (!state.session) { switchPhase('url'); return; }
+
+    // Reset steps
+    ['ast-1','ast-2','ast-3','ast-4','ast-5'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    document.getElementById('watch-btn').style.display = 'none';
+
+    document.getElementById('video-iframe').src =
+      'https://www.youtube.com/embed/' + state.session.videoId + '?autoplay=0';
+
+    switchPhase('watch');
+    runAnalysisMock();
+  }
+
+  function runAnalysisMock() {
+    const expectedPhase = 'watch';
+    const schedule = [
+      [1000, 'ast-1'],
+      [2500, 'ast-2'],
+      [3500, 'ast-3'],
+      [5000, 'ast-4'],
+      [6500, 'ast-5']
+    ];
+    schedule.forEach(([delay, id]) => {
+      setTimeout(() => {
+        if (state.phase !== expectedPhase) return;
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'block';
+      }, delay);
+    });
+    setTimeout(() => {
+      if (state.phase !== expectedPhase) return;
+      document.getElementById('watch-btn').style.display = 'block';
+    }, 7500);
+  }
+
+  function goToLoading() {
+    if (state.phase !== 'watch') return;
+    document.getElementById('watch-btn').style.display = 'none';
+    document.getElementById('video-iframe').src = '';
+
+    // Reset + restart progress animation
+    const fill = document.getElementById('prog-fill');
+    fill.classList.remove('running');
+    void fill.offsetWidth; // reflow
+    fill.classList.add('running');
+
+    if (state.ctx) {
+      const tools = (state.ctx.tools || []).join(' / ') || '—';
+      document.getElementById('loading-ctx-label').textContent =
+        state.ctx.role + ' × ' + tools;
+    }
+
+    switchPhase('loading');
+
+    setTimeout(() => {
+      if (state.phase !== 'loading') return;
+      buildOutput();
+      renderOutput();
+      switchPhase('output');
+    }, 1500);
+  }
+
+  // ─────────────────────────────
+  // S05: Output
+  // ─────────────────────────────
+  function buildOutput() {
+    if (!state.session) return;
+    const ctx = state.ctx || { role: '—', tools: [] };
+    const t0 = (ctx.tools || [])[0] || 'Claude Code';
+    const t1 = (ctx.tools || [])[1] || 'Notion';
+
+    state.output = {
+      sessionId: state.session.id,
+      generatedAt: new Date().toISOString(),
+      usableItems: SAMPLE.usableItems.map(item => ({
+        ...item,
+        context: item.context
+          .replace('Claude Code', t0)
+          .replace('Notion', t1)
+      })),
+      actionPlan: SAMPLE.actionPlan,
+      memos: SAMPLE.memos
+    };
+
+    const outputs = ls(SK.outputs) || [];
+    const idx = outputs.findIndex(o => o.sessionId === state.session.id);
+    if (idx >= 0) outputs[idx] = state.output;
+    else outputs.unshift(state.output);
+    ss(SK.outputs, outputs.slice(0, 10));
+  }
+
+  function renderOutput() {
+    if (!state.output || !state.session) return;
+
+    document.getElementById('out-title').textContent = state.session.title;
+    document.getElementById('out-date').textContent = state.session.createdAt;
+
+    // Usable items
+    document.getElementById('usable-list').innerHTML =
+      state.output.usableItems.map(item =>
+        `<div class="usable-item">
+          <div class="usable-point"><span class="arrow">→</span>${escapeHtml(item.point)}</div>
+          <div class="usable-ctx">${escapeHtml(item.context)}</div>
+        </div>`
+      ).join('');
+
+    // Action plan
+    const checks = ls(SK.checks) || {};
+    document.getElementById('action-list').innerHTML =
+      state.output.actionPlan.map(a => {
+        const done = checks[a.id] || false;
+        return `<div class="action-row${done ? ' done' : ''}" id="ar-${escapeHtml(a.id)}">
+          <input type="checkbox" ${done ? 'checked' : ''} onchange="toggleCheck(${JSON.stringify(a.id)}, this.checked)">
+          <div class="action-text">${escapeHtml(a.action)}</div>
+          <div class="action-timing">${escapeHtml(a.timing)}</div>
+        </div>`;
+      }).join('');
+
+    // Memos
+    document.getElementById('memo-list').innerHTML =
+      state.output.memos.map(m => `<div class="memo-row">${escapeHtml(m)}</div>`).join('');
+  }
+
+  function toggleCheck(id, checked) {
+    const checks = ls(SK.checks) || {};
+    checks[id] = checked;
+    ss(SK.checks, checks);
+    const row = document.getElementById('ar-' + id);
+    if (row) row.classList.toggle('done', checked);
+    toast(checked ? '完了としてマーク' : '未完了に戻しました');
+  }
+
+  function resetSample() {
+    if (!state.session) return;
+    state.output = {
+      sessionId: state.session.id,
+      generatedAt: new Date().toISOString(),
+      ...SAMPLE
+    };
+    ss(SK.checks, {});
+    renderOutput();
+    toast('サンプルデータに戻しました');
+  }
+
+  // ─────────────────────────────
+  // S06: History
+  // ─────────────────────────────
+  function goToHistory() {
+    const sessions = ls(SK.sessions) || [];
+    const el = document.getElementById('history-full');
+    if (sessions.length === 0) {
+      el.innerHTML = '<div class="empty-state">まだ視聴履歴がありません</div>';
+    } else {
+      el.innerHTML = sessions.map(s =>
+        `<div class="history-full-item" onclick="loadSessionById(${JSON.stringify(s.id)})">
+          <div class="hf-title">${escapeHtml(s.title)}</div>
+          <div class="hf-meta">${escapeHtml(s.createdAt)} <i class="bi bi-arrow-right"></i></div>
+        </div>`
+      ).join('');
+    }
+    switchPhase('history');
+  }
+
+  // ─────────────────────────────
+  // Init
+  // ─────────────────────────────
+  function init() {
+    const ctx = ls(SK.ctx);
+    if (ctx && ctx.role) {
+      state.ctx = ctx;
+      state.tools = ctx.tools || [];
+      document.getElementById('ctx-role').value = ctx.role;
+      renderToolTags();
+      if (ctx.currentChallenge) {
+        document.getElementById('ctx-challenge').value = ctx.currentChallenge;
+      }
+      goToUrl();
+    } else {
+      switchPhase('context');
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
