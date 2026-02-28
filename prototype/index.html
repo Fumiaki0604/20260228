@@ -542,6 +542,8 @@
     analysisResult: null
   };
 
+  let analysisId = 0;
+
   // ─────────────────────────────
   // Phase switch
   // ─────────────────────────────
@@ -631,6 +633,7 @@
   }
 
   function goBackFromWatch() {
+    analysisId++; // 進行中の解析を無効化
     document.getElementById('video-iframe').src = '';
     goToUrl();
   }
@@ -746,7 +749,7 @@
   }
 
   async function runAnalysisReal() {
-    const expectedPhase = 'watch';
+    const myId = ++analysisId;
 
     // Step 1: 取得開始
     document.getElementById('ast-1').style.display = 'block';
@@ -759,7 +762,7 @@
         body: JSON.stringify({ videoId: state.session.videoId, context: ctx })
       });
 
-      if (state.phase !== expectedPhase) return;
+      if (analysisId !== myId) return;
 
       if (!res.ok) {
         let errMsg = '解析に失敗しました';
@@ -772,7 +775,7 @@
       document.getElementById('ast-3').style.display = 'block';
 
       const data = await res.json();
-      if (state.phase !== expectedPhase) return;
+      if (analysisId !== myId) return;
 
       state.analysisResult = data;
 
@@ -781,12 +784,12 @@
       document.getElementById('ast-5').style.display = 'block';
 
       setTimeout(() => {
-        if (state.phase !== expectedPhase) return;
+        if (analysisId !== myId) return;
         document.getElementById('watch-btn').style.display = 'block';
       }, 600);
 
     } catch (err) {
-      if (state.phase !== expectedPhase) return;
+      if (analysisId !== myId) return;
       const note = document.getElementById('analysis-note');
       if (note) { note.textContent = '⚠ ' + err.message; note.style.color = 'var(--accent)'; }
     }
