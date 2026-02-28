@@ -1,7 +1,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const https = require('https');
 
-// ── HTTP GET (Node.js built-in, リダイレクト対応) ─────────
+// ── HTTP GET ──────────────────────────────────────────────
 function httpGet(urlStr) {
   return new Promise((resolve, reject) => {
     const req = https.get(urlStr, {
@@ -20,14 +20,116 @@ function httpGet(urlStr) {
       res.on('end', () => resolve(body));
     });
     req.on('error', reject);
-    req.setTimeout(20000, () => { req.destroy(); reject(new Error('Request timed out')); });
+    req.setTimeout(20000, () => { req.destroy(); reject(new Error('timeout')); });
   });
 }
 
-// ── captionTracks を HTML から抽出（括弧カウント方式）──────
+// ── HTTP POST (JSON → JSON) ───────────────────────────────
+function httpPost(urlStr, bodyObj, extraHeaders = {}) {
+  return new Promise((resolve, reject) => {
+    const bodyStr = JSON.stringify(bodyObj);
+    const u = new URL(urlStr);
+    const req = https.request({
+      hostname: u.hostname, port: 443,
+      path: u.pathname + u.search, method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(bodyStr),
+        ...extraHeaders,
+      },
+    }, res => {
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve(null); } });
+    });
+    req.on('error', reject);
+    req.setTimeout(20000, () => { req.destroy(); reject(new Error('timeout')); });
+    req.write(bodyStr);
+    req.end();
+  });
+}
+
+// ── XML エンティティ除去 ──────────────────────────────────
+function decodeEntities(str) {
+  return str
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#x27;/g, "'")
+    .trim();
+}
+
+// ── captionTracks → transcript text ──────────────────────
+async function tracksToTranscript(tracks) {
+  if (!tracks?.length) return null;
+  const track = tracks.find(t => t.languageCode === 'ja')
+    || tracks.find(t => t.languageCode?.startsWith('en'))
+    || tracks[0];
+  if (!track?.baseUrl) return null;
+  const xml = await httpGet(track.baseUrl);
+  const texts = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)]
+    .map(m => decodeEntities(m[1])).filter(Boolean);
+  return texts.length > 0 ? texts.join(' ') : null;
+}
+
+// ── 方法1: InnerTube ANDROID クライアント ─────────────────
+// Android クライアントはbot判定・同意ページを回避できる
+async function fetchViaAndroid(videoId) {
+  const data = await httpPost(
+    'https://www.youtube.com/youtubei/v1/player',
+    {
+      videoId,
+      context: {
+        client: {
+          clientName: 'ANDROID',
+          clientVersion: '17.31.35',
+          androidSdkVersion: 30,
+          hl: 'en',
+          timeZone: 'UTC',
+          utcOffsetMinutes: 0,
+        },
+      },
+    },
+    {
+      'User-Agent': 'com.google.android.youtube/17.31.35 (Linux; U; Android 11) gzip',
+      'X-YouTube-Client-Name': '3',
+      'X-YouTube-Client-Version': '17.31.35',
+      'Origin': 'https://www.youtube.com',
+    }
+  );
+  const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+  return tracksToTranscript(tracks);
+}
+
+// ── 方法2: InnerTube WEB クライアント ─────────────────────
+async function fetchViaWeb(videoId) {
+  const data = await httpPost(
+    'https://www.youtube.com/youtubei/v1/player',
+    {
+      videoId,
+      context: {
+        client: {
+          clientName: 'WEB',
+          clientVersion: '2.20240101',
+          hl: 'en',
+          timeZone: 'UTC',
+        },
+      },
+    },
+    {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'X-YouTube-Client-Name': '1',
+      'X-YouTube-Client-Version': '2.20240101',
+      'Origin': 'https://www.youtube.com',
+      'Referer': `https://www.youtube.com/watch?v=${videoId}`,
+    }
+  );
+  const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+  return tracksToTranscript(tracks);
+}
+
+// ── 方法3: HTMLスクレイピング（括弧カウント方式）──────────
 function extractCaptionTracks(html) {
-  const key = '"captionTracks":';
-  const pos = html.indexOf(key);
+  const pos = html.indexOf('"captionTracks":');
   if (pos === -1) return null;
   const arrStart = html.indexOf('[', pos);
   if (arrStart === -1) return null;
@@ -36,46 +138,24 @@ function extractCaptionTracks(html) {
     if (html[i] === '[') depth++;
     else if (html[i] === ']' && --depth === 0) break;
   }
-  try {
-    return JSON.parse(html.slice(arrStart, i + 1));
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(html.slice(arrStart, i + 1)); } catch { return null; }
 }
 
-// ── HTML エンティティ除去 ─────────────────────────────────
-function decodeEntities(str) {
-  return str
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#x27;/g, "'")
-    .trim();
-}
-
-// ── YouTube トランスクリプト取得 ──────────────────────────
-async function fetchYouTubeTranscript(videoId) {
+async function fetchViaPageScraping(videoId) {
   const html = await httpGet(`https://www.youtube.com/watch?v=${videoId}`);
   const tracks = extractCaptionTracks(html);
-  if (!tracks || tracks.length === 0) return null;
+  return tracksToTranscript(tracks);
+}
 
-  // ja → en 系 → 先頭の順で優先
-  const track =
-    tracks.find(t => t.languageCode === 'ja') ||
-    tracks.find(t => t.languageCode && t.languageCode.startsWith('en')) ||
-    tracks[0];
-
-  if (!track?.baseUrl) return null;
-
-  const xml = await httpGet(track.baseUrl);
-  const texts = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)]
-    .map(m => decodeEntities(m[1]))
-    .filter(Boolean);
-
-  return texts.length > 0 ? texts.join(' ') : null;
+// ── メイン: 3段フォールバック ─────────────────────────────
+async function fetchYouTubeTranscript(videoId) {
+  for (const fn of [fetchViaAndroid, fetchViaWeb, fetchViaPageScraping]) {
+    try {
+      const t = await fn(videoId);
+      if (t) return t;
+    } catch {}
+  }
+  return null;
 }
 
 module.exports = async function handler(req, res) {
@@ -86,13 +166,9 @@ module.exports = async function handler(req, res) {
   const { videoId, context } = req.body;
   if (!videoId) return res.status(400).json({ error: 'videoId is required' });
 
-  // ── 1. 字幕取得 ──────────────────────────────
-  let transcript;
-  try {
-    transcript = await fetchYouTubeTranscript(videoId);
-  } catch {
-    transcript = null;
-  }
+  // ── 1. 字幕取得 ──────────────────────────────────────────
+  let transcript = null;
+  try { transcript = await fetchYouTubeTranscript(videoId); } catch {}
 
   if (!transcript) {
     return res.status(422).json({
@@ -100,7 +176,7 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  // ── 2. Claude API ────────────────────────────
+  // ── 2. Claude API ─────────────────────────────────────────
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const role      = context?.role             || '—';
