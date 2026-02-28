@@ -390,12 +390,12 @@
       </div>
       <div class="analysis-panel">
         <div class="panel-label">// AI 解析状況</div>
-        <div class="a-step prog" id="ast-1">音声を解析中...</div>
-        <div class="a-step done" id="ast-2">✓ 音声解析完了</div>
-        <div class="a-step prog" id="ast-3">スライド画像を検出中...</div>
-        <div class="a-step done" id="ast-4">✓ スライド 7枚を検出</div>
+        <div class="a-step prog" id="ast-1">字幕・音声データを取得中...</div>
+        <div class="a-step done" id="ast-2">✓ データ取得完了</div>
+        <div class="a-step prog" id="ast-3">AIが内容を解析中...</div>
+        <div class="a-step done" id="ast-4">✓ 解析完了</div>
         <div class="a-step prog" id="ast-5">あなたの文脈に翻訳中...</div>
-        <div class="analysis-note">動画を見ながら待てます</div>
+        <div class="analysis-note" id="analysis-note">動画を見ながら待てます</div>
       </div>
     </div>
     <div class="watch-foot">
@@ -534,7 +534,8 @@
     ctx: null,
     tools: [],
     session: null,
-    output: null
+    output: null,
+    analysisResult: null
   };
 
   // ─────────────────────────────
@@ -723,34 +724,62 @@
       if (el) el.style.display = 'none';
     });
     document.getElementById('watch-btn').style.display = 'none';
+    const note = document.getElementById('analysis-note');
+    if (note) { note.textContent = '動画を見ながら待てます'; note.style.color = 'var(--sub)'; }
+    state.analysisResult = null;
 
     document.getElementById('video-iframe').src =
       'https://www.youtube.com/embed/' + state.session.videoId + '?autoplay=0';
 
     switchPhase('watch');
-    runAnalysisMock();
+    runAnalysisReal();
   }
 
-  function runAnalysisMock() {
+  async function runAnalysisReal() {
     const expectedPhase = 'watch';
-    const schedule = [
-      [1000, 'ast-1'],
-      [2500, 'ast-2'],
-      [3500, 'ast-3'],
-      [5000, 'ast-4'],
-      [6500, 'ast-5']
-    ];
-    schedule.forEach(([delay, id]) => {
+
+    // Step 1: 取得開始
+    document.getElementById('ast-1').style.display = 'block';
+
+    try {
+      const ctx = state.ctx || { role: '—', tools: [], currentChallenge: '' };
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoId: state.session.videoId, context: ctx })
+      });
+
+      if (state.phase !== expectedPhase) return;
+
+      if (!res.ok) {
+        let errMsg = '解析に失敗しました';
+        try { const e = await res.json(); errMsg = e.error || errMsg; } catch {}
+        throw new Error(errMsg);
+      }
+
+      // Step 2, 3: レスポンス受信
+      document.getElementById('ast-2').style.display = 'block';
+      document.getElementById('ast-3').style.display = 'block';
+
+      const data = await res.json();
+      if (state.phase !== expectedPhase) return;
+
+      state.analysisResult = data;
+
+      // Step 4, 5: 完了
+      document.getElementById('ast-4').style.display = 'block';
+      document.getElementById('ast-5').style.display = 'block';
+
       setTimeout(() => {
         if (state.phase !== expectedPhase) return;
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'block';
-      }, delay);
-    });
-    setTimeout(() => {
+        document.getElementById('watch-btn').style.display = 'block';
+      }, 600);
+
+    } catch (err) {
       if (state.phase !== expectedPhase) return;
-      document.getElementById('watch-btn').style.display = 'block';
-    }, 7500);
+      const note = document.getElementById('analysis-note');
+      if (note) { note.textContent = '⚠ ' + err.message; note.style.color = 'var(--accent)'; }
+    }
   }
 
   function goToLoading() {
@@ -785,22 +814,40 @@
   // ─────────────────────────────
   function buildOutput() {
     if (!state.session) return;
-    const ctx = state.ctx || { role: '—', tools: [] };
-    const t0 = (ctx.tools || [])[0] || 'Claude Code';
-    const t1 = (ctx.tools || [])[1] || 'Notion';
 
-    state.output = {
-      sessionId: state.session.id,
-      generatedAt: new Date().toISOString(),
-      usableItems: SAMPLE.usableItems.map(item => ({
-        ...item,
-        context: item.context
-          .replace('Claude Code', t0)
-          .replace('Notion', t1)
-      })),
-      actionPlan: SAMPLE.actionPlan,
-      memos: SAMPLE.memos
-    };
+    if (state.analysisResult) {
+      // 実API結果を使用
+      const r = state.analysisResult;
+      state.output = {
+        sessionId: state.session.id,
+        generatedAt: new Date().toISOString(),
+        usableItems: r.usableItems,
+        actionPlan: r.actionPlan,
+        memos: r.memos
+      };
+      // セッションタイトルをAI生成タイトルで更新
+      if (r.title) {
+        state.session.title = r.title;
+        const sessions = ls(SK.sessions) || [];
+        const si = sessions.findIndex(s => s.id === state.session.id);
+        if (si >= 0) { sessions[si] = state.session; ss(SK.sessions, sessions); }
+      }
+    } else {
+      // フォールバック: サンプルデータ
+      const ctx = state.ctx || { role: '—', tools: [] };
+      const t0 = (ctx.tools || [])[0] || 'Claude Code';
+      const t1 = (ctx.tools || [])[1] || 'Notion';
+      state.output = {
+        sessionId: state.session.id,
+        generatedAt: new Date().toISOString(),
+        usableItems: SAMPLE.usableItems.map(item => ({
+          ...item,
+          context: item.context.replace('Claude Code', t0).replace('Notion', t1)
+        })),
+        actionPlan: SAMPLE.actionPlan,
+        memos: SAMPLE.memos
+      };
+    }
 
     const outputs = ls(SK.outputs) || [];
     const idx = outputs.findIndex(o => o.sessionId === state.session.id);
