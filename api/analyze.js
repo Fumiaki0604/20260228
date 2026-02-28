@@ -12,19 +12,22 @@ module.exports = async function handler(req, res) {
   // ── 1. 字幕取得 ──────────────────────────────
   let transcript = '';
 
-  // 日本語字幕を優先、なければ任意言語にフォールバック
-  try {
-    const items = await YoutubeTranscript.fetchTranscript(videoId, { lang: 'ja' });
-    transcript = items.map(i => i.text).join(' ');
-  } catch {
+  // ja → en → en-US → デフォルト（自動生成含む）の順で試行
+  const langAttempts = [{ lang: 'ja' }, { lang: 'en' }, { lang: 'en-US' }, {}];
+  for (const opts of langAttempts) {
     try {
-      const items = await YoutubeTranscript.fetchTranscript(videoId);
-      transcript = items.map(i => i.text).join(' ');
-    } catch {
-      return res.status(422).json({
-        error: 'この動画には字幕がありません。字幕（自動生成を含む）がある動画のURLを入力してください。'
-      });
-    }
+      const items = await YoutubeTranscript.fetchTranscript(videoId, opts);
+      if (items && items.length > 0) {
+        transcript = items.map(i => i.text).join(' ');
+        break;
+      }
+    } catch {}
+  }
+
+  if (!transcript) {
+    return res.status(422).json({
+      error: 'この動画には字幕がありません。字幕（自動生成を含む）がある動画のURLを入力してください。'
+    });
   }
 
   // ── 2. Claude API ────────────────────────────

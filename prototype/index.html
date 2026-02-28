@@ -634,7 +634,8 @@
 
   function goBackFromWatch() {
     analysisId++; // 進行中の解析を無効化
-    document.getElementById('video-iframe').src = '';
+    document.getElementById('video-iframe').src = 'about:blank';
+    document.getElementById('url-input').value = '';
     goToUrl();
   }
 
