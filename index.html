@@ -359,9 +359,16 @@
 
   <!-- ── S02: URL Input ── -->
   <div id="phase-url" class="phase">
-    <div class="sec-label">// ANALYZE VIDEO</div>
-    <div class="page-title">動画URLを入力</div>
-    <div class="page-sub">YouTubeのURLを貼るだけ。AIが音声とスライドを解析します。</div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:4px">
+      <div>
+        <div class="sec-label">// ANALYZE VIDEO</div>
+        <div class="page-title">動画URLを入力</div>
+      </div>
+      <button type="button" class="btn-ghost" onclick="editContext()" style="margin-top:8px;white-space:nowrap">
+        <i class="bi bi-pencil"></i> コンテキストを変更
+      </button>
+    </div>
+    <div id="ctx-summary" style="font-size:12px;color:var(--sub);margin-bottom:28px"></div>
 
     <div class="url-row">
       <input type="url" id="url-input" placeholder="https://www.youtube.com/watch?v=...">
@@ -626,7 +633,17 @@
   // ─────────────────────────────
   function goToUrl() {
     renderHistoryPreview();
+    renderCtxSummary();
     switchPhase('url');
+  }
+
+  function renderCtxSummary() {
+    const el = document.getElementById('ctx-summary');
+    if (!el) return;
+    const ctx = state.ctx;
+    if (!ctx) { el.textContent = ''; return; }
+    const tools = (ctx.tools || []).join(' / ') || '—';
+    el.textContent = ctx.role + (ctx.tools.length ? ' — ' + tools : '');
   }
 
   function extractVideoId(url) {
