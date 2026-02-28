@@ -1,5 +1,82 @@
 const Anthropic = require('@anthropic-ai/sdk');
-const { YoutubeTranscript } = require('youtube-transcript');
+const https = require('https');
+
+// ── HTTP GET (Node.js built-in, リダイレクト対応) ─────────
+function httpGet(urlStr) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(urlStr, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9,ja;q=0.8',
+        'Accept-Encoding': 'identity',
+      },
+    }, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        resolve(httpGet(res.headers.location));
+        return;
+      }
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => resolve(body));
+    });
+    req.on('error', reject);
+    req.setTimeout(20000, () => { req.destroy(); reject(new Error('Request timed out')); });
+  });
+}
+
+// ── captionTracks を HTML から抽出（括弧カウント方式）──────
+function extractCaptionTracks(html) {
+  const key = '"captionTracks":';
+  const pos = html.indexOf(key);
+  if (pos === -1) return null;
+  const arrStart = html.indexOf('[', pos);
+  if (arrStart === -1) return null;
+  let depth = 0, i = arrStart;
+  for (; i < html.length; i++) {
+    if (html[i] === '[') depth++;
+    else if (html[i] === ']' && --depth === 0) break;
+  }
+  try {
+    return JSON.parse(html.slice(arrStart, i + 1));
+  } catch {
+    return null;
+  }
+}
+
+// ── HTML エンティティ除去 ─────────────────────────────────
+function decodeEntities(str) {
+  return str
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .trim();
+}
+
+// ── YouTube トランスクリプト取得 ──────────────────────────
+async function fetchYouTubeTranscript(videoId) {
+  const html = await httpGet(`https://www.youtube.com/watch?v=${videoId}`);
+  const tracks = extractCaptionTracks(html);
+  if (!tracks || tracks.length === 0) return null;
+
+  // ja → en 系 → 先頭の順で優先
+  const track =
+    tracks.find(t => t.languageCode === 'ja') ||
+    tracks.find(t => t.languageCode && t.languageCode.startsWith('en')) ||
+    tracks[0];
+
+  if (!track?.baseUrl) return null;
+
+  const xml = await httpGet(track.baseUrl);
+  const texts = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)]
+    .map(m => decodeEntities(m[1]))
+    .filter(Boolean);
+
+  return texts.length > 0 ? texts.join(' ') : null;
+}
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -10,18 +87,11 @@ module.exports = async function handler(req, res) {
   if (!videoId) return res.status(400).json({ error: 'videoId is required' });
 
   // ── 1. 字幕取得 ──────────────────────────────
-  let transcript = '';
-
-  // ja → en → en-US → デフォルト（自動生成含む）の順で試行
-  const langAttempts = [{ lang: 'ja' }, { lang: 'en' }, { lang: 'en-US' }, {}];
-  for (const opts of langAttempts) {
-    try {
-      const items = await YoutubeTranscript.fetchTranscript(videoId, opts);
-      if (items && items.length > 0) {
-        transcript = items.map(i => i.text).join(' ');
-        break;
-      }
-    } catch {}
+  let transcript;
+  try {
+    transcript = await fetchYouTubeTranscript(videoId);
+  } catch {
+    transcript = null;
   }
 
   if (!transcript) {
