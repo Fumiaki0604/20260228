@@ -634,7 +634,7 @@
 
   function goBackFromWatch() {
     analysisId++; // 進行中の解析を無効化
-    document.getElementById('video-iframe').src = 'about:blank';
+    resetVideoIframe(null); // 要素ごと作り直してキャッシュをクリア
     document.getElementById('url-input').value = '';
     goToUrl();
   }
@@ -727,6 +727,24 @@
   });
 
   // ─────────────────────────────
+  // iframe ユーティリティ
+  // ─────────────────────────────
+  // src書き換えだけではブラウザがYouTubeプレイヤーをキャッシュするため
+  // 要素ごと作り直す
+  function resetVideoIframe(videoId) {
+    const wrap = document.querySelector('.video-wrap');
+    const old = document.getElementById('video-iframe');
+    if (old) old.remove();
+    const iframe = document.createElement('iframe');
+    iframe.id = 'video-iframe';
+    iframe.setAttribute('allowfullscreen', '');
+    if (videoId) {
+      iframe.src = 'https://www.youtube.com/embed/' + videoId + '?autoplay=0';
+    }
+    wrap.appendChild(iframe);
+  }
+
+  // ─────────────────────────────
   // S03: Watch
   // ─────────────────────────────
   function goToWatch() {
@@ -742,8 +760,7 @@
     if (note) { note.textContent = '動画を見ながら待てます'; note.style.color = 'var(--sub)'; }
     state.analysisResult = null;
 
-    document.getElementById('video-iframe').src =
-      'https://www.youtube.com/embed/' + state.session.videoId + '?autoplay=0';
+    resetVideoIframe(state.session.videoId);
 
     switchPhase('watch');
     runAnalysisReal();
@@ -799,7 +816,7 @@
   function goToLoading() {
     if (state.phase !== 'watch') return;
     document.getElementById('watch-btn').style.display = 'none';
-    document.getElementById('video-iframe').src = '';
+    resetVideoIframe(null);
 
     // Reset + restart progress animation
     const fill = document.getElementById('prog-fill');

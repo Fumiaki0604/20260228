@@ -147,15 +147,23 @@ async function fetchViaPageScraping(videoId) {
   return tracksToTranscript(tracks);
 }
 
-// ── メイン: 3段フォールバック ─────────────────────────────
+// ── メイン: 3段フォールバック (デバッグ情報付き) ──────────
 async function fetchYouTubeTranscript(videoId) {
-  for (const fn of [fetchViaAndroid, fetchViaWeb, fetchViaPageScraping]) {
+  const debug = [];
+  for (const [name, fn] of [
+    ['android', fetchViaAndroid],
+    ['web', fetchViaWeb],
+    ['page', fetchViaPageScraping],
+  ]) {
     try {
       const t = await fn(videoId);
-      if (t) return t;
-    } catch {}
+      if (t) return { transcript: t, debug };
+      debug.push({ method: name, result: 'null (no transcript)' });
+    } catch (e) {
+      debug.push({ method: name, error: e.message });
+    }
   }
-  return null;
+  return { transcript: null, debug };
 }
 
 module.exports = async function handler(req, res) {
@@ -168,11 +176,19 @@ module.exports = async function handler(req, res) {
 
   // ── 1. 字幕取得 ──────────────────────────────────────────
   let transcript = null;
-  try { transcript = await fetchYouTubeTranscript(videoId); } catch {}
+  let debugInfo = [];
+  try {
+    const result = await fetchYouTubeTranscript(videoId);
+    transcript = result.transcript;
+    debugInfo = result.debug;
+  } catch (e) {
+    debugInfo = [{ error: e.message }];
+  }
 
   if (!transcript) {
     return res.status(422).json({
-      error: 'この動画には字幕がありません。字幕（自動生成を含む）がある動画のURLを入力してください。'
+      error: 'この動画には字幕がありません。字幕（自動生成を含む）がある動画のURLを入力してください。',
+      _debug: debugInfo
     });
   }
 
