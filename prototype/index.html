@@ -202,7 +202,7 @@
       font-size: 12px; color: var(--sub); margin-top: 14px; line-height: 1.6;
     }
 
-    .watch-foot { display: flex; justify-content: flex-end; padding-top: 4px; }
+    .watch-foot { display: flex; justify-content: space-between; align-items: center; padding-top: 4px; }
 
     @keyframes fadeup {
       from { opacity: 0; transform: translateY(4px); }
@@ -354,7 +354,10 @@
       <textarea id="ctx-challenge" rows="3" placeholder="例: AIツールをチームに展開したい"></textarea>
     </div>
 
-    <button type="button" class="btn" onclick="saveContext()">設定して始める →</button>
+    <div style="display:flex;gap:10px;align-items:center">
+      <button type="button" class="btn" onclick="saveContext()">設定して始める →</button>
+      <button type="button" class="btn-ghost" id="ctx-cancel-btn" onclick="goToUrl()" style="display:none">キャンセル</button>
+    </div>
   </div>
 
   <!-- ── S02: URL Input ── -->
@@ -399,6 +402,7 @@
       </div>
     </div>
     <div class="watch-foot">
+      <button type="button" class="btn-ghost" onclick="goBackFromWatch()">← 戻る</button>
       <button type="button" class="btn" id="watch-btn" style="display:none" onclick="goToLoading()">
         解析完了 → アウトプット生成
       </button>
@@ -621,8 +625,14 @@
       state.tools = [...(state.ctx.tools || [])];
       renderToolTags();
       document.getElementById('ctx-challenge').value = state.ctx.currentChallenge || '';
+      document.getElementById('ctx-cancel-btn').style.display = 'inline-block';
     }
     switchPhase('context');
+  }
+
+  function goBackFromWatch() {
+    document.getElementById('video-iframe').src = '';
+    goToUrl();
   }
 
   document.getElementById('ctx-tool-input').addEventListener('keydown', e => {
